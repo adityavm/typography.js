@@ -15,7 +15,7 @@ function trim(a,b){var c,l=0,i=0;a+='';if(!b){c=" \n\r\t\f\x0b\xa0\u2000\u2001\u
  * By Aditya V. Mukherjee	(adityamukherjee.com)
  * 	  Andreas Carlsson 		(nofont.com)
  *
- * Released under the MIT License. 
+ * Released under the MIT License.
  */
 function typography(){ this.exec(); } // run all registered hooks and apply typographical changes to required classes
 typography.prototype = {
