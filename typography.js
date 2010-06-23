@@ -17,26 +17,28 @@ function trim(a,b){var c,l=0,i=0;a+='';if(!b){c=" \n\r\t\f\x0b\xa0\u2000\u2001\u
  *
  * Released under the MIT License.
  */
-function typography(){ this.exec(); } // run all registered hooks and apply typographical changes to required classes
+function typography(){ this.exec(this); } // run all registered hooks and apply typographical changes to required classes
 typography.prototype = {
 	options: {
 		classContext	: "text",
-		constantClass	: "glyph"
+		constantClass	: "glyph",
+		emptyTags		: "br,hr,img" // tags that might be empty
 	},
 	
 	/* hooks to call when typografying the text
 	 */
 	hooks: new Array(
-				/*'this.ampersand',
-				'this.ellipsis',*/
 				'this.ligature_fi',
 				'this.ligature_fl'
 			),
 	
+	/** INTERNAL */
+	
 	/* execute the transformer
 	 */
-	exec: function(){
+	exec: function(obj){
 		var context = Sizzle("." + this.options.classContext);
+		
 		for(var i=0;i<context.length;i++){
 			if(typeof context[i] != 'object')
 				continue;
@@ -45,48 +47,92 @@ typography.prototype = {
 				text = trim(c.innerText || c.textContent),
 				html = trim(c.innerHTML);
 			
-			/* these are easy */
-			html = html.replace(/\s&amp;\s/g, " "+this.ampersand("&")+" ");
-			html = html.replace(/(\.\s\.\s(\.\s)?|(\.\.(\.)?))/g, this.ellipsis("..."));
-				
-			var tokens = text.split(" "); // split the text into tokens (oh boy)
-			for(var j=0;j<tokens.length;j++)
-				html = html.replace(tokens[j], this.applyHooks(tokens[j]));
+			//html = this.cleanup(html);
 			
-			context[i].innerHTML = html;
+			/* these are easy */
+			html = html.replace(/\s&amp;\s/g, " "+this.ampersand(obj, "&")+" ");
+			html = html.replace(/(\.\s\.\s(\.\s)?|(\.\.(\.)?))/g, this.ellipsis(obj, "..."));
+			
+			context[i].innerHTML = this.tokeniseAndTypografy(obj, html);
 		}
 	},
 	
-	/* apply all the hooks to the given token
+	tokeniseAndTypografy: function(obj, html){
+		var tagStack = new Array(),
+			tokens = html.split(" "), // split the text into tokens (oh boy)
+			skip = false, tag = "";
+		for(var j=0;j<tokens.length;j++){
+			/* keep skipping tokens if we encounter a tag opening until it is closed or '/>' is reached */
+			if(tokens[j].match(/<(\w+)>?/)){
+				skip = true; tagStack.push(RegExp['$1']);
+			}
+			
+			if(skip){
+				if(tokens[j].match(/\/>/)){
+					tagStack.pop();
+					skip = false;
+				} else if(tokens[j].match(/>/))
+					skip = false;
+			}
+			
+			if(tokens[j].match(/<\/(\w+)>/)){
+				skip = false;
+				if(RegExp["$1"] == tag[tag.length-1])
+					tagStack.pop();
+				else // reset stack
+					tagStack = new Array();
+			}
+			
+			//console.log(tokens[j], skip, tag);
+			/* if we're skipping */
+			if(skip){
+				if(tokens[j].match(/>(.+)<\/\w+>/))
+					this.tokeniseAndTypografy(obj, RegExp['$1']);
+			} else {
+				html = html.replace(tokens[j], this.applyHooks(obj, tokens[j]));
+			}
+		}
+		return html;		
+	},
+	
+	/* apply all the hooks to the array of tokens
 	 */
-	applyHooks: function(token){
+	applyHooks: function(obj, token){
 		var output = token;
-		for(i in typography.prototype.hooks){
-			var func = eval(typography.prototype.hooks[i]);
-			output = func(output);
+		for(i in this.hooks){
+			var func = eval(this.hooks[i]);
+			output = func(obj, output);
 		}
 		return output;
 	},
 	
+	cleanup: function(obj, html){
+		html = html.replace(/<(\w+)(\s?)([.\S]*)(?:\s*\/>)/, "<$1$2$3></$1>");
+	},
+	
+	/** PREDEFINED HOOKS */
+	
 	/* Change all ampersands to SPAN-wrapped &amp;
 	 */
-	ampersand: function(token){
-		return token.replace(/^&$/, "<span class=\"typo-amp "+ typography.prototype.constantClass +"\">&amp;</span>");
+	ampersand: function(obj, token){
+		return token.replace(/^&$/, "<span class=\"typo-amp "+ this.options.constantClass +"\">&amp;</span>");
 	},
 	
 	/* Change all ellipsis to SPAN-wrapped &hellip;
 	 */
-	ellipsis: function(token){
-		return token.replace(/^(\.\.\.)$/, "<span class=\"typo-ellipsis "+ typography.prototype.constantClass +"\">&hellip;</span>");
+	ellipsis: function(obj, token){
+		return token.replace(/^(\.\.\.)$/, "<span class=\"typo-ellipsis "+ this.options.constantClass +"\">&hellip;</span>");
 	},
 	
-	/* 
+	/* Replace "fi" with "ﬁ"
 	 */
-	ligature_fi: function(token){
-		return token;
+	ligature_fi: function(obj, token){
+		return token.replace(/fi(?!([^<]+)?>)/, "&#xFB01;");
 	},
 	
-	ligature_fl: function(token){
-		return token;
+	/* Replace "fl" with "ﬂ"
+	 */
+	ligature_fl: function(obj, token){
+		return token.replace(/fl(?!([^<]+)?>)/, "&#xFB02;");
 	}
 }
